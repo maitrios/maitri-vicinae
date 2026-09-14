@@ -1,4 +1,4 @@
-# vicinae-maitri
+# maitri-vicinae
 
 The [Vicinae](https://vicinae.com) extension that gives [maitri](https://github.com/kindness-ai/maitri)
 its menu, keybindings viewer and pickers. Vicinae is maitri's launcher; this extension is the maitri
