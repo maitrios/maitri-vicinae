@@ -8,7 +8,7 @@
   "about": {"icon":"","label":"About","action":"maitri-launch-about"},
 
   "learn.keybindings": {"icon":"","label":"Keybindings","action":"maitri-menu-keybindings"},
-  "learn.maitri": {"icon":"","label":"maitri","description":"Read the manual","action":"maitri-launch-webapp 'https://github.com/kindness-ai/maitri'"},
+  "learn.maitri": {"icon":"","label":"maitri","description":"Read the manual","action":"maitri-launch-webapp 'https://github.com/maitrios/maitri'"},
 
   "style.theme": {"icon":"","label":"Theme","aliases":["theme"],"action":"maitri-theme-switcher"},
   "style.font": {"icon":"","label":"Font","provider":"fonts"},
