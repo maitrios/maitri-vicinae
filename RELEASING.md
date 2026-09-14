@@ -6,7 +6,8 @@ without a Node toolchain.
 
 ## Cut a release
 
-1. Bump `version` in `package.json` (if present) and commit.
+1. Bump `version` in `package.json` and commit. Then bump `pkgver` and `sha256sums` in
+   maitri-pkgs `pkgbuilds/maitri-vicinae-extension/PKGBUILD` once the release asset exists.
 2. Tag the release and push the tag:
 
    ```fish
@@ -18,10 +19,8 @@ without a Node toolchain.
 
 ## What the workflow produces
 
-On a `v*` tag push (or a published release), CI runs `npm ci && npm run build`
-(`vici build`), which installs the extension into
-`~/.local/share/vicinae/extensions/maitri/`. That installed directory is packaged
-and attached to the release as:
+On a `v*` tag push (or a published release), CI runs `npm ci && npm test && npx vici build -o dist`.
+The `dist/` directory is packaged and attached to the release as:
 
 | Asset | Description |
 | --- | --- |

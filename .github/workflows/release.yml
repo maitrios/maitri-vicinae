@@ -26,44 +26,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test
+        run: npm test
+
       - name: Build extension
-        run: npm run build
+        run: npx vici build -o dist
 
-      # `vici build` installs the extension into the user's data dir rather than a
-      # local dist/. On Linux runners that resolves to
-      # $HOME/.local/share/vicinae/extensions/maitri. If a future @vicinae/api
-      # changes that path, the fallback below searches for the installed dir
-      # (identified by its package.json "name": "maitri") anywhere under the
-      # extensions root.
-      - name: Locate built extension
-        id: locate
-        run: |
-          set -euo pipefail
-          EXT_ROOT="$HOME/.local/share/vicinae/extensions"
-          EXT_DIR="$EXT_ROOT/maitri"
-
-          if [ ! -f "$EXT_DIR/package.json" ]; then
-            echo "Expected build output at $EXT_DIR not found; searching $EXT_ROOT" >&2
-            EXT_DIR="$(dirname "$(grep -rl --include=package.json '"name": "maitri"' "$EXT_ROOT" | head -n1)")"
-          fi
-
-          if [ -z "${EXT_DIR:-}" ] || [ ! -f "$EXT_DIR/package.json" ]; then
-            echo "Could not locate the built maitri extension under $EXT_ROOT" >&2
-            ls -laR "$EXT_ROOT" || true
-            exit 1
-          fi
-
-          echo "Found built extension at $EXT_DIR"
-          ls -la "$EXT_DIR"
-          echo "ext_dir=$EXT_DIR" >> "$GITHUB_OUTPUT"
-
-      # tar from inside the extension dir so the archive contents sit at the root
-      # and unpack directly into a target dir (e.g. tar -xzf ... -C <target>).
+      # tar from inside dist/ so the archive contents sit at the root and unpack
+      # directly into a target dir (e.g. tar -xzf ... -C <target>).
       - name: Package extension
         id: package
         run: |
           set -euo pipefail
-          EXT_DIR="${{ steps.locate.outputs.ext_dir }}"
+          EXT_DIR="$GITHUB_WORKSPACE/dist"
           TARBALL="maitri-vicinae-extension.tar.gz"
           tar -czf "$GITHUB_WORKSPACE/$TARBALL" -C "$EXT_DIR" .
           cd "$GITHUB_WORKSPACE"

@@ -1,38 +1,21 @@
-import {
-  Action,
-  ActionPanel,
-  Grid,
-  Icon,
-  Toast,
-  showToast,
-  showHUD,
-  closeMainWindow,
-} from "@vicinae/api";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { homedir } from "node:os";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { Action, ActionPanel, Grid, Icon, Toast, closeMainWindow, showHUD, showToast } from "@vicinae/api";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { CURRENT_THEME_NAME, DEFAULT_THEMES, USER_THEMES } from "./lib/core/paths";
+import { run } from "./lib/sh";
 
-const exec = promisify(execFile);
+type Theme = { name: string; title: string; preview?: string; current: boolean };
 
-// maitri ships to ~/.local/share/maitri; user theme overrides live under ~/.config/maitri/themes.
-const MAITRI = process.env.MAITRI_PATH || join(homedir(), ".local/share/maitri");
-const USER_THEMES = join(homedir(), ".config/maitri/themes");
-const DEFAULT_THEMES = join(MAITRI, "themes");
-
-type Theme = { name: string; title: string; preview?: string };
+const IMG = /\.(png|jpe?g|webp|gif|bmp)$/i;
 
 function findPreview(dir: string): string | undefined {
-  for (const f of ["preview.png", "preview.jpg"]) {
+  for (const f of ["preview.png", "preview.jpg", "preview.jpeg", "preview.webp"]) {
     const p = join(dir, f);
     if (existsSync(p)) return p;
   }
   const bg = join(dir, "backgrounds");
   if (existsSync(bg)) {
-    const imgs = readdirSync(bg)
-      .filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
-      .sort();
+    const imgs = readdirSync(bg).filter((f) => IMG.test(f)).sort();
     if (imgs.length) return join(bg, imgs[0]);
   }
   return undefined;
@@ -42,10 +25,20 @@ function prettify(name: string): string {
   return name.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function currentTheme(): string {
+  try {
+    return readFileSync(CURRENT_THEME_NAME, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 function listThemes(): Theme[] {
   const seen = new Set<string>();
   const themes: Theme[] = [];
-  // User themes take precedence over the maitri-shipped ones.
+  const current = currentTheme();
+  // User themes take precedence over the packaged ones; statSync follows the
+  // symlinks a dotfile manager leaves behind.
   for (const base of [USER_THEMES, DEFAULT_THEMES]) {
     if (!existsSync(base)) continue;
     for (const entry of readdirSync(base)) {
@@ -58,24 +51,17 @@ function listThemes(): Theme[] {
       }
       seen.add(entry);
       const preview = findPreview(dir) ?? findPreview(join(DEFAULT_THEMES, entry));
-      themes.push({ name: entry, title: prettify(entry), preview });
+      themes.push({ name: entry, title: prettify(entry), preview, current: entry === current });
     }
   }
-  return themes.sort((a, b) => a.title.localeCompare(b.title));
+  return themes.sort((a, b) => Number(b.current) - Number(a.current) || a.title.localeCompare(b.title));
 }
 
 async function applyTheme(theme: Theme) {
-  try {
-    await closeMainWindow();
-    await exec(join(MAITRI, "bin", "maitri-theme-set"), [theme.name]);
-    await showHUD(`Theme set: ${theme.title}`);
-  } catch (e) {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: "Failed to set theme",
-      message: String(e),
-    });
-  }
+  await closeMainWindow();
+  const r = await run(["maitri-theme-set", theme.name]);
+  if (r.ok) await showHUD(`Theme set: ${theme.title}`);
+  else await showToast({ style: Toast.Style.Failure, title: "Failed to set theme", message: r.stderr.slice(0, 200) });
 }
 
 export default function ThemePicker() {
@@ -86,7 +72,7 @@ export default function ThemePicker() {
         {themes.map((t) => (
           <Grid.Item
             key={t.name}
-            title={t.title}
+            title={t.current ? `${t.title} ✓` : t.title}
             content={t.preview ? { source: t.preview } : { source: Icon.Brush }}
             actions={
               <ActionPanel>

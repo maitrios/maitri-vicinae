@@ -1,27 +1,62 @@
 import { Action, ActionPanel, Color, List, Toast, closeMainWindow, showToast } from "@vicinae/api";
 import { useEffect, useState } from "react";
-import { capture, ph, run } from "./lib/menu";
+import { ph } from "./lib/icons";
+import { capture, run } from "./lib/sh";
 
 type Bind = {
   combo: string;
   label: string;
   dispatcher: string;
   arg: string;
-  special: boolean; // XF86 / media / mouse / bare keycode — sorted to the bottom
+  special: boolean; // XF86 / media / mouse — sorted to the bottom
 };
 
-// Hyprland modmask bits.
+// maitri-menu-keybindings --records prints one binding per line as
+// "<chord padded> → <description>\t<dispatcher>\t<arg>", already resolved
+// through maitri's Lua-bind recovery (hyprctl reports Lua binds as
+// dispatcher __lua, which cannot be dispatched back). --dispatch runs one.
+function parseRecords(out: string): Bind[] {
+  return out
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => {
+      const [display, dispatcher = "", arg = ""] = line.split("\t");
+      const arrow = display.indexOf("→");
+      const combo = (arrow >= 0 ? display.slice(0, arrow) : display).trim();
+      const label = (arrow >= 0 ? display.slice(arrow + 1) : "").trim() || dispatcher;
+      const special = /XF86|MOUSE/i.test(combo);
+      return { combo, label, dispatcher, arg, special };
+    });
+}
+
+// Fallback for a runtime without --records: hyprctl's JSON, descriptions
+// included; Lua binds are shown but cannot be run.
 function modText(mask: number): string {
   const parts: string[] = [];
   if (mask & 64) parts.push("SUPER");
   if (mask & 1) parts.push("SHIFT");
   if (mask & 4) parts.push("CTRL");
   if (mask & 8) parts.push("ALT");
-  return parts.join(" ");
+  return parts.join(" + ");
 }
 
-function humanize(dispatcher: string, arg: string): string {
-  return (arg ? `${dispatcher} ${arg}` : dispatcher).trim();
+function parseHyprctl(out: string): Bind[] {
+  let raw: Array<Record<string, unknown>> = [];
+  try {
+    raw = JSON.parse(out);
+  } catch {
+    return [];
+  }
+  return raw
+    .filter((b) => b && typeof b.description === "string" && b.description)
+    .map((b) => {
+      const mods = modText(Number(b.modmask) || 0);
+      const key = String(b.key || (b.keycode ? `code:${b.keycode}` : "")).toUpperCase();
+      const combo = [mods, key].filter(Boolean).join(" + ");
+      const dispatcher = String(b.dispatcher || "");
+      return { combo, label: String(b.description), dispatcher: dispatcher === "__lua" ? "" : dispatcher, arg: b.arg ? String(b.arg) : "", special: key.startsWith("XF86") || Boolean(b.mouse) };
+    });
 }
 
 export default function Keybindings() {
@@ -29,39 +64,20 @@ export default function Keybindings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    capture(["hyprctl", "-j", "binds"])
-      .then((out) => {
-        let raw: Array<Record<string, unknown>> = [];
-        try {
-          raw = JSON.parse(out);
-        } catch {
-          raw = [];
-        }
-        const parsed: Bind[] = raw
-          .filter((b) => b && typeof b.dispatcher === "string" && b.dispatcher)
-          .map((b) => {
-            const mods = modText(Number(b.modmask) || 0);
-            const key = String(b.key || (b.keycode ? `code:${b.keycode}` : "")).toUpperCase();
-            const combo = [mods, key].filter(Boolean).join(" + ") || (b.mouse ? "Mouse" : "");
-            const dispatcher = String(b.dispatcher);
-            const arg = b.arg ? String(b.arg) : "";
-            const label = (typeof b.description === "string" && b.description.trim()) || humanize(dispatcher, arg);
-            const special = key.startsWith("XF86") || Boolean(b.mouse) || (!mods && Boolean(b.keycode));
-            return { combo, label, dispatcher, arg, special };
-          })
-          .filter((b) => b.label);
-        // Keep config order, but push media/XF86/mouse binds to the bottom (stable sort).
-        parsed.sort((a, b) => Number(a.special) - Number(b.special));
-        setBinds(parsed);
-      })
-      .finally(() => setLoading(false));
+    (async () => {
+      let parsed = parseRecords(await capture(["maitri-menu-keybindings", "--records"]));
+      if (!parsed.length) parsed = parseHyprctl(await capture(["hyprctl", "-j", "binds"]));
+      parsed.sort((a, b) => Number(a.special) - Number(b.special));
+      setBinds(parsed);
+    })().finally(() => setLoading(false));
   }, []);
 
   async function runBind(b: Bind) {
-    // Execute the bind exactly as pressing the key would.
-    const argv = ["hyprctl", "dispatch", b.dispatcher];
-    if (b.arg) argv.push(b.arg);
-    const r = await run(argv);
+    if (!b.dispatcher) {
+      await showToast({ style: Toast.Style.Failure, title: "This binding cannot be run from here" });
+      return;
+    }
+    const r = await run(["maitri-menu-keybindings", "--dispatch", b.dispatcher, b.arg]);
     if (!r.ok) {
       await showToast({ style: Toast.Style.Failure, title: "Failed to run shortcut", message: r.stderr.slice(0, 160) });
       return;
@@ -76,7 +92,7 @@ export default function Keybindings() {
           key={`${i}-${b.combo}`}
           icon={ph("keyboard", Color.PrimaryText)}
           title={b.label}
-          keywords={b.combo.split(/\s+/)}
+          keywords={b.combo.split(/\s+\+\s+|\s+/)}
           accessories={[{ tag: { value: b.combo, color: Color.SecondaryText } }]}
           actions={
             <ActionPanel>

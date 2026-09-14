@@ -1,303 +1,159 @@
-import {
-  Action,
-  ActionPanel,
-  Alert,
-  Color,
-  Icon,
-  List,
-  Toast,
-  closeMainWindow,
-  confirmAlert,
-  popToRoot,
-  showHUD,
-  showToast,
-  useNavigation,
-} from "@vicinae/api";
+import { Action, ActionPanel, Color, Icon, List, Toast, closeMainWindow, popToRoot, showToast } from "@vicinae/api";
 import { useEffect, useMemo, useState } from "react";
-import { type Cmd, type Launch, type Node, type Toggle, ph, run, spawnDetached } from "./menu";
+import type { Item } from "./core/menu-model";
+import { childrenOf } from "./core/menu-source";
+import { VIEW_OVERRIDES, type ViewName } from "./core/routes";
+import { search } from "./core/search";
+import { iconFor } from "./icons";
+import { spawnDetachedShell } from "./sh";
+import type { MenuState } from "./useMenu";
 import { VIEWS } from "./views";
 
-// A live trailing value (current selection, update badge) rendered as a tag.
-function accList(acc: string | null | undefined, color?: Color) {
-  return acc ? [{ tag: { value: acc, color: color ?? Color.SecondaryText } }] : [];
-}
-
-type Entry = { node: Node; trail: string[] };
-
-// Flatten the tree into every node + its breadcrumb trail, recursing only into
-// statically-defined children (async children stay navigable via their group).
-function flattenAll(nodes: Node[], trail: string[] = []): Entry[] {
-  const out: Entry[] = [];
-  for (const node of nodes) {
-    out.push({ node, trail });
-    if (node.type === "group" && Array.isArray(node.children)) {
-      out.push(...flattenAll(node.children, [...trail, node.title]));
-    }
-  }
-  return out;
-}
-
-function matches(entry: Entry, query: string): boolean {
-  const hay = `${entry.node.title} ${entry.trail.join(" ")} ${entry.node.keywords?.join(" ") ?? ""}`.toLowerCase();
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((w) => hay.includes(w));
-}
-
-// Rank matches so the menu you're after comes first: a node whose own title carries
-// the query beats one that only matched via its breadcrumb/keywords, exact/prefix
-// title beats a substring, and shallower (top-level) menus beat deep leaves. Ties keep
-// the natural tree order since Array.sort is stable.
-function rank(entry: Entry, query: string): number {
-  const q = query.toLowerCase().trim();
-  const words = q.split(/\s+/).filter(Boolean);
-  const title = entry.node.title.toLowerCase();
-  let score = 0;
-  if (title === q) score += 1000;
-  else if (title.startsWith(q)) score += 600;
-  else if (words.every((w) => title.includes(w))) score += 300;
-  score -= entry.trail.length * 40;
-  return score;
-}
-
-async function execNode(exec: string[], terminal: boolean | undefined, hud: string | undefined) {
-  // Launch-and-leave: spawn DETACHED so the child survives the worker teardown
-  // that closeMainWindow() triggers, then close immediately. Awaiting the child
-  // would hold the menu open until the launched app/terminal exits.
-  if (terminal) {
-    spawnDetached(["maitri-launch-floating-terminal-with-presentation", exec.join(" ")]);
-  } else {
-    spawnDetached(exec);
-  }
-  if (hud) await showHUD(hud);
-  else await closeMainWindow();
-}
-
-async function runCmd(node: Cmd) {
-  if (node.confirm) {
-    const ok = await confirmAlert({
-      title: node.confirm.title,
-      message: node.confirm.message,
-      primaryAction: {
-        title: node.title,
-        style: node.destructive ? Alert.ActionStyle.Destructive : Alert.ActionStyle.Default,
-      },
-    });
-    if (!ok) return;
-  }
-  await execNode(node.exec, node.terminal, node.hud);
-}
-
-async function runLaunch(node: Launch) {
-  if (node.root) {
-    await popToRoot();
-    return;
-  }
-  if (node.deeplink) {
-    await run(["vicinae", node.deeplink]);
-    return;
-  }
-  if (node.app) spawnDetached(["gtk-launch", node.app]);
-  else if (node.url) spawnDetached(["maitri-launch-webapp", node.url]);
-  else if (node.editor) spawnDetached(["maitri-launch-editor", node.editor]);
+// Actions are launch-and-leave: the child must survive the worker teardown
+// that closeMainWindow() triggers, so it is spawned detached first.
+export async function runAction(action: string) {
+  spawnDetachedShell(action);
   await closeMainWindow();
 }
 
-function Row({
-  node,
-  state,
-  acc,
-  breadcrumb,
-  refresh,
-}: {
-  node: Node;
-  state?: boolean;
-  acc?: string | null;
-  breadcrumb?: string;
-  refresh: () => void;
-}) {
-  const subtitle = breadcrumb || node.subtitle;
+function viewFor(entry: Item): ViewName | undefined {
+  return VIEW_OVERRIDES[entry.id];
+}
 
-  if (node.type === "view") {
-    const Comp = VIEWS[node.view];
+function Row({ entry, menu, path, onOpen }: { entry: Item; menu: MenuState; path?: string; onOpen: (id: string) => void }) {
+  const { model, items, itemOrder, guards, extras } = menu;
+  if (!model) return null;
+  const label = model.labelFor(entry, guards.checked);
+  const checked = entry.checked ? Boolean(guards.checked[entry.id]) : entry.icon === "✓";
+  const accessories = checked ? [{ icon: Icon.Check }] : [];
+  const icon = iconFor(entry, extras[entry.id]);
+  const view = viewFor(entry);
+
+  if (view) {
+    const Comp = VIEWS[view];
     return (
       <List.Item
-        icon={ph(node.icon, Color.PrimaryText)}
-        title={node.title}
-        subtitle={subtitle}
-        keywords={node.keywords}
-        accessories={[...accList(acc, node.accessoryColor), { icon: Icon.ChevronRight }]}
-        actions={<ActionPanel>{Comp ? <Action.Push title={`Open ${node.title}`} target={<Comp />} /> : null}</ActionPanel>}
+        icon={icon}
+        title={label}
+        subtitle={path}
+        keywords={[entry.description, ...entry.aliases].filter(Boolean)}
+        accessories={[...accessories, { icon: Icon.ChevronRight }]}
+        actions={<ActionPanel><Action.Push title={`Open ${entry.label}`} target={<Comp />} /></ActionPanel>}
       />
     );
   }
 
-  if (node.type === "group") {
+  if (entry.kind === "action") {
     return (
       <List.Item
-        icon={ph(node.icon, Color.PrimaryText)}
-        title={node.title}
-        subtitle={subtitle}
-        keywords={node.keywords}
-        accessories={[...accList(acc, node.accessoryColor), { icon: Icon.ChevronRight }]}
+        icon={icon}
+        title={label}
+        subtitle={path}
+        keywords={[entry.description, ...entry.aliases].filter(Boolean)}
+        accessories={accessories}
         actions={
           <ActionPanel>
-            <Action.Push
-              title={`Open ${node.title}`}
-              target={<MenuList navigationTitle={node.title} nodes={node.children} />}
-            />
+            <Action title={entry.label} onAction={() => runAction(entry.action)} />
+            <Action.CopyToClipboard title="Copy Command" content={entry.action} />
           </ActionPanel>
         }
       />
     );
   }
 
-  if (node.type === "toggle") {
-    const on = state ?? false;
-    return (
-      <List.Item
-        icon={ph(node.icon, Color.PrimaryText)}
-        title={node.title}
-        subtitle={subtitle}
-        keywords={node.keywords}
-        accessories={[{ tag: { value: on ? (node.onLabel ?? "On") : (node.offLabel ?? "Off"), color: on ? Color.Green : Color.SecondaryText } }]}
-        actions={
-          <ActionPanel>
-            <Action
-              title={on ? `Turn Off ${node.title}` : `Turn On ${node.title}`}
-              onAction={async () => {
-                await run(node.exec);
-                refresh();
-              }}
-            />
-          </ActionPanel>
-        }
-      />
-    );
-  }
-
-  if (node.type === "launch") {
-    return (
-      <List.Item
-        icon={ph(node.icon, Color.PrimaryText)}
-        title={node.title}
-        subtitle={subtitle}
-        keywords={node.keywords}
-        accessories={accList(acc, node.accessoryColor)}
-        actions={
-          <ActionPanel>
-            <Action title={node.title} onAction={() => runLaunch(node)} />
-          </ActionPanel>
-        }
-      />
-    );
-  }
-
-  // cmd
+  const targetId = entry.kind === "link" ? entry.target : entry.id;
+  const target = items[targetId];
+  const isApps = target?.provider === "apps";
+  const count = isApps ? 0 : model.childCount(items, itemOrder, targetId);
   return (
     <List.Item
-      icon={ph(node.icon, node.destructive ? Color.Red : Color.PrimaryText)}
-      title={node.title}
-      subtitle={subtitle}
-      keywords={node.keywords}
-      accessories={accList(acc, node.accessoryColor)}
+      icon={icon}
+      title={label}
+      subtitle={path}
+      keywords={[entry.description, ...entry.aliases].filter(Boolean)}
+      accessories={[...accessories, ...(count ? [{ text: String(count) }] : []), { icon: Icon.ChevronRight }]}
       actions={
         <ActionPanel>
-          <Action
-            title={node.title}
-            style={node.destructive ? Action.Style.Destructive : Action.Style.Regular}
-            onAction={() => runCmd(node)}
-          />
+          {isApps ? (
+            <Action title="Search Apps" onAction={() => popToRoot()} />
+          ) : (
+            <Action title={`Open ${entry.label}`} onAction={() => onOpen(targetId)} />
+          )}
         </ActionPanel>
       }
     />
   );
 }
 
-export function MenuList({
-  navigationTitle,
-  nodes,
-  global,
-}: {
-  navigationTitle: string;
-  nodes: Node[] | (() => Promise<Node[]>);
-  global?: boolean; // root menu: search jumps to any action across the whole tree
-}) {
-  const [items, setItems] = useState<Node[] | null>(Array.isArray(nodes) ? nodes : null);
-  const [loading, setLoading] = useState(!Array.isArray(nodes));
-  const [states, setStates] = useState<Record<string, boolean>>({});
-  const [accVals, setAccVals] = useState<Record<string, string | null>>({});
-  const [query, setQuery] = useState("");
-  const [tick, setTick] = useState(0);
+export function MenuList({ menu, menuId, initialQuery }: { menu: MenuState; menuId: string; initialQuery?: string }) {
+  const { model, items, itemOrder, guards, guardsLoading, errors, missingRuntime, loadProvider } = menu;
+  const [activeId, setActiveId] = useState(menuId);
+  const [query, setQuery] = useState(initialQuery ?? "");
+  const [stack, setStack] = useState<string[]>([]);
 
   useEffect(() => {
-    if (typeof nodes === "function") {
-      setLoading(true);
-      nodes()
-        .then(setItems)
-        .finally(() => setLoading(false));
+    loadProvider(activeId);
+  }, [activeId, loadProvider]);
+
+  useEffect(() => {
+    if (errors.length) {
+      showToast({ style: Toast.Style.Failure, title: "A maitri menu file did not parse", message: errors[0] });
     }
-  }, []);
+  }, [errors]);
 
-  // For a global menu, index every node once; otherwise just the current level.
-  const flat = useMemo(() => (global && items ? flattenAll(items) : []), [global, items]);
-  const resolveNodes = global ? flat.map((e) => e.node) : (items ?? []);
+  const active = items[activeId];
+  const title = active && activeId !== "root" ? active.title || active.label : "maitri";
 
-  // Resolve live toggle state for everything we might show.
-  useEffect(() => {
-    const toggles = resolveNodes.filter((n): n is Toggle => n.type === "toggle");
-    if (toggles.length === 0) return;
-    let cancelled = false;
-    Promise.all(toggles.map(async (t) => [t.id, await t.isOn()] as const)).then((entries) => {
-      if (!cancelled) setStates(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [items, tick]);
+  const rows = useMemo(() => {
+    if (!model) return [];
+    const q = query.trim();
+    if (q) {
+      return search(model, items, itemOrder, activeId, q, guards).map((hit) => ({ entry: hit.entry, path: hit.path }));
+    }
+    return childrenOf(items, itemOrder, activeId)
+      .filter((entry) => entry.kind !== "app" && model.isVisible(items, itemOrder, guards.when, entry))
+      .map((entry) => ({ entry, path: undefined as string | undefined }));
+  }, [model, items, itemOrder, activeId, query, guards]);
 
-  // Resolve live trailing accessories (current selection, update badge, …).
-  useEffect(() => {
-    const withAcc = resolveNodes.filter((n) => typeof n.accessory === "function");
-    if (withAcc.length === 0) return;
-    let cancelled = false;
-    Promise.all(withAcc.map(async (n) => [n.id, await n.accessory?.()] as const)).then((entries) => {
-      if (!cancelled) setAccVals(Object.fromEntries(entries.map(([id, v]) => [id, v ?? null])));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [items, tick]);
+  if (missingRuntime || !model) {
+    return (
+      <List navigationTitle="maitri">
+        <List.EmptyView title="maitri runtime not found" description="The maitri package (shell/plugins/menu/MenuModel.js and maitri-menu.jsonc) is not installed." />
+      </List>
+    );
+  }
 
-  const refresh = () => setTick((t) => t + 1);
-
-  // Empty query (or non-global) → current level. Typed query on a global menu →
-  // flattened matches across the whole tree, with breadcrumb context.
-  const q = query.trim();
-  const displayed: Entry[] =
-    global && q
-      ? flat.filter((e) => matches(e, q)).sort((a, b) => rank(b, q) - rank(a, q))
-      : (items ?? []).map((node) => ({ node, trail: [] }));
+  const open = (id: string) => {
+    setStack((s) => [...s, activeId]);
+    setActiveId(id);
+    setQuery("");
+  };
+  const back = () => {
+    const prev = stack[stack.length - 1];
+    if (prev === undefined) return;
+    setStack((s) => s.slice(0, -1));
+    setActiveId(prev);
+    setQuery("");
+  };
 
   return (
     <List
-      navigationTitle={navigationTitle}
-      isLoading={loading}
-      searchBarPlaceholder={global ? "Search maitri…" : `Search ${navigationTitle}…`}
-      filtering={global ? false : undefined}
-      onSearchTextChange={global ? setQuery : undefined}
+      navigationTitle={title}
+      isLoading={guardsLoading}
+      searchText={query}
+      onSearchTextChange={setQuery}
+      filtering={false}
+      searchBarPlaceholder={activeId === "root" ? "Search maitri…" : `Search ${title}…`}
+      actions={
+        stack.length ? (
+          <ActionPanel>
+            <Action title="Back" onAction={back} />
+          </ActionPanel>
+        ) : undefined
+      }
     >
-      {displayed.map(({ node, trail }) => (
-        <Row
-          key={node.id}
-          node={node}
-          state={states[node.id]}
-          acc={accVals[node.id]}
-          breadcrumb={trail.length ? trail.join(" › ") : undefined}
-          refresh={refresh}
-        />
+      {rows.map(({ entry, path }) => (
+        <Row key={entry.id} entry={entry} menu={menu} path={path} onOpen={open} />
       ))}
     </List>
   );

@@ -1,0 +1,168 @@
+import { Color, Icon, Image } from "@vicinae/api";
+import type { Item } from "./core/menu-model";
+import type { Extras } from "./core/menu-source";
+
+/** A Phosphor icon bundled under assets/phosphor, e.g. ph("gear"). */
+export function ph(name: string, tintColor?: Color): Image.ImageLike {
+  return tintColor ? { source: `phosphor/${name}.svg`, tintColor } : { source: `phosphor/${name}.svg` };
+}
+
+// The JSONC carries Nerd Font glyphs for the Quickshell menu, which Vicinae
+// cannot render as an ImageLike. Map rows to bundled Phosphor icons instead:
+// an explicit `vicinaeIcon` in the JSONC wins, then the dotted id, then the
+// last id segment, then the row kind.
+const ICONS_BY_ID: Record<string, string> = {
+  apps: "squares-four",
+  learn: "graduation-cap",
+  trigger: "lightning",
+  style: "palette",
+  setup: "sliders-horizontal",
+  install: "package",
+  remove: "trash",
+  update: "arrows-clockwise",
+  about: "info",
+  system: "power",
+  "learn.keybindings": "keyboard",
+  "learn.maitri": "book-bookmark",
+  "learn.hyprland": "app-window",
+  "learn.arch": "linux-logo",
+  "learn.neovim": "cube",
+  "learn.bash": "terminal",
+  "learn.tmux-keybindings": "terminal-window",
+  "learn.herdr-keybindings": "terminal-window",
+  "trigger.emoji": "hand-tap",
+  "trigger.reminder": "bell-ringing",
+  "trigger.capture": "camera",
+  "trigger.capture.screenshot": "camera",
+  "trigger.capture.screenrecord": "video-camera",
+  "trigger.share": "share-network",
+  "trigger.toggle": "swap",
+  "trigger.hardware": "cpu",
+  "style.theme": "palette",
+  "style.background": "image",
+  "style.unlock": "lock-key",
+  "style.font": "text-aa",
+  "style.screensaver": "monitor-play",
+  "style.about": "info",
+  "setup.default": "seal-check",
+  "setup.default.browser": "browser",
+  "setup.default.terminal": "terminal",
+  "setup.default.editor": "code",
+  "setup.default.agent": "robot",
+  "setup.audio": "speaker-high",
+  "setup.wifi": "wifi-high",
+  "setup.bluetooth": "bluetooth",
+  "setup.monitors": "monitor",
+  "setup.keybindings": "keyboard",
+  "setup.input": "cursor",
+  "setup.power": "power",
+  "setup.dns": "network",
+  "setup.security": "shield-check",
+  "setup.security.fingerprint": "fingerprint",
+  "setup.security.fido2": "key",
+  "setup.config": "gear",
+  "setup.plugins": "package",
+  "install.browser": "browser",
+  "install.terminal": "terminal",
+  "install.editor": "code",
+  "install.ai": "robot",
+  "install.gaming": "game-controller",
+  "install.gaming.steam": "steam-logo",
+  "install.service": "cloud",
+  "install.service.dropbox": "dropbox-logo",
+  "install.development": "code-block",
+  "install.package": "package",
+  "install.webapp": "globe",
+  "install.tui": "terminal-window",
+  "install.style": "swatches",
+  "install.windows": "windows-logo",
+  "remove.browser": "browser",
+  "remove.gaming": "game-controller",
+  "remove.development": "code-block",
+  "remove.package": "package",
+  "remove.webapp": "globe",
+  "remove.tui": "terminal-window",
+  "remove.style": "swatches",
+  "update.maitri": "download-simple",
+  "update.channel": "git-branch",
+  "update.config": "gear",
+  "update.process": "arrow-clockwise",
+  "update.hardware": "cpu",
+  "update.firmware": "cpu",
+  "update.password": "key",
+  "update.timezone": "globe",
+  "update.time": "clock",
+  "system.screensaver": "monitor-play",
+  "system.lock": "lock",
+  "system.suspend": "moon",
+  "system.hibernate": "snowflake",
+  "system.logout": "sign-out",
+  "system.reboot": "arrow-counter-clockwise",
+  "system.shutdown": "power",
+};
+
+const ICONS_BY_LEAF: Record<string, string> = {
+  chrome: "google-chrome-logo",
+  chromium: "browser",
+  helium: "browser",
+  firefox: "browser",
+  brave: "browser",
+  edge: "browser",
+  zen: "browser",
+  alacritty: "terminal",
+  foot: "terminal",
+  ghostty: "terminal",
+  kitty: "terminal",
+  vscode: "code",
+  cursor: "code",
+  zed: "code",
+  sublime: "code",
+  helix: "code",
+  neovim: "cube",
+  vim: "terminal",
+  emacs: "code",
+  docker: "database",
+  steam: "steam-logo",
+  retroarch: "joystick",
+  heroic: "game-controller",
+  lutris: "game-controller",
+  dropbox: "dropbox-logo",
+  tailscale: "shield",
+  nordvpn: "shield",
+  fingerprint: "fingerprint",
+  fido2: "key",
+  audio: "speaker-high",
+  wifi: "wifi-high",
+  bluetooth: "bluetooth",
+  trackpad: "mouse",
+  monitors: "monitor",
+  keyboard: "keyboard",
+  stable: "circle",
+  edge_channel: "circle",
+  dev: "circle",
+  drive: "hard-drive",
+  user: "user",
+  hyprland: "wind",
+  plymouth: "paint-roller",
+  tmux: "terminal",
+  vicinae: "rocket-launch",
+  nightlight: "sun",
+  idle: "moon",
+  screensaver: "monitor-play",
+  webcam: "webcam",
+  microphone: "microphone",
+};
+
+export function iconFor(item: Item, extras: Extras | undefined, tint: Color = Color.PrimaryText): Image.ImageLike {
+  const explicit = extras?.vicinaeIcon;
+  if (explicit) return ph(explicit, tint);
+  if (item.icon === "✓") return Icon.CheckCircle;
+  const byId = ICONS_BY_ID[item.id];
+  if (byId) return ph(byId, tint);
+  const leaf = item.id.split(".").pop() ?? "";
+  const byLeaf = ICONS_BY_LEAF[leaf] ?? ICONS_BY_LEAF[leaf.replace(/-/g, "_")];
+  if (byLeaf) return ph(byLeaf, tint);
+  if (item.kind === "menu") return ph("folder", tint);
+  if (item.kind === "link") return ph("arrows-out", tint);
+  return ph("play", tint);
+}

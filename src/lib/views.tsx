@@ -1,12 +1,14 @@
 import type { ReactElement } from "react";
 import BackgroundPicker from "../background-picker";
+import Keybindings from "../keybindings";
 import ThemePicker from "../theme-picker";
 import UnlockPicker from "../unlock-picker";
+import type { ViewName } from "./core/routes";
 
-// In-extension views pushed from the menu (and openable directly via the menu's
-// fallbackText router) so the pickers aren't separate root-search commands.
-export const VIEWS: Record<string, () => ReactElement> = {
-  theme: ThemePicker,
-  background: BackgroundPicker,
-  unlock: UnlockPicker,
+// In-extension views the menu pushes for the rows in VIEW_OVERRIDES.
+export const VIEWS: Record<ViewName, () => ReactElement> = {
+  "theme-picker": ThemePicker,
+  "background-picker": BackgroundPicker,
+  "unlock-picker": UnlockPicker,
+  keybindings: Keybindings,
 };

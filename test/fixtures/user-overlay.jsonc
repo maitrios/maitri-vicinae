@@ -1,0 +1,5 @@
+{
+  // Retitle a shipped row (redeclaring its action, as MenuModel merges whole rows), add a new one.
+  "system.lock": {"label":"Lock Screen","action":"maitri-system-lock"},
+  "system.hibernate": {"icon":"󰤁","label":"Hibernate","action":"systemctl hibernate","vicinaeIcon":"snowflake"},
+}

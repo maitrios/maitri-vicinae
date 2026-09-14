@@ -1,0 +1,24 @@
+{
+  // A slice of maitri-menu.jsonc covering every entry shape the extension handles.
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},
+  "learn": {"icon":"󰧑","label":"Learn"},
+  "style": {"icon":"","label":"Style"},
+  "setup": {"icon":"","label":"Setup","aliases":["settings"]},
+  "system": {"icon":"","label":"System","aliases":["power-menu"]},
+  "about": {"icon":"","label":"About","action":"maitri-launch-about"},
+
+  "learn.keybindings": {"icon":"","label":"Keybindings","action":"maitri-menu-keybindings"},
+  "learn.maitri": {"icon":"","label":"maitri","description":"Read the manual","action":"maitri-launch-webapp 'https://github.com/kindness-ai/maitri'"},
+
+  "style.theme": {"icon":"","label":"Theme","aliases":["theme"],"action":"maitri-theme-switcher"},
+  "style.font": {"icon":"","label":"Font","provider":"fonts"},
+
+  "setup.default": {"icon":"","label":"Defaults"},
+  "setup.default.browser": {"icon":"","label":"Browser","title":"Default Browser"},
+  "setup.default.browser.helium": {"icon":"","label":"Helium","when":"maitri-cmd-present helium","checked":"[[ \"$(maitri-default-browser)\" == \"helium\" ]]","action":"maitri-default-browser helium"},
+  "setup.default.browser.firefox": {"icon":"","label":"Firefox","when":"maitri-cmd-present firefox","checked":"[[ \"$(maitri-default-browser)\" == \"firefox\" ]]","action":"maitri-default-browser firefox"},
+  "setup.power-profile": {"icon":"","label":"Power Profile","target":"style.font"},
+
+  "system.lock": {"icon":"","label":"Lock","action":"maitri-system-lock","vicinaeIcon":"lock"},
+  "system.shutdown": {"icon":"󰐥","label":"Shutdown","action":"maitri-system-shutdown"},
+}

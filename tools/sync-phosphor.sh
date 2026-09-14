@@ -16,7 +16,8 @@ if [[ ! -d $SRC ]]; then
   exit 1
 fi
 
-names=$( { grep -rhoE 'icon:[[:space:]]*"[^"]+"' src; grep -rhoE 'ph\("[^"]+"' src; } | sed -E 's/.*"([^"]+).*/\1/' | sort -u)
+# Icons are named in the two maps in src/lib/icons.ts plus any direct ph("...") call.
+names=$( { grep -hoE '"[a-z0-9-]+"\s*,?\s*$' src/lib/icons.ts | grep -oE '[a-z0-9-]+'; grep -rhoE 'ph\("[^"]+"' src | sed -E 's/.*"([^"]+).*/\1/'; } | sort -u)
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
