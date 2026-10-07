@@ -47,7 +47,9 @@ npm run build    # vici build — installs into ~/.local/share/vicinae/extension
 ## Distribution
 
 On a `v*` tag (or a published GitHub release), CI tests, builds with `vici build -o dist`, and attaches
-**`maitri-vicinae-extension.tar.gz`** (contents at the archive root) plus a `.sha256`. maitri ships it
+**`maitri-vicinae-extension.tar.gz`** (contents at the archive root) plus a `.sha256`, and records a
+build provenance attestation you can check with
+`gh attestation verify maitri-vicinae-extension.tar.gz -R maitrios/maitri-vicinae`. maitri ships it
 as the `maitri-vicinae-extension` pacman package (`/usr/share/maitri/vicinae-extension`), and
 `maitri-refresh-vicinae-extension` copies it into the user's extensions dir.
 
