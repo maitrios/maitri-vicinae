@@ -42,6 +42,11 @@ jobs:
           set -euo pipefail
           EXT_DIR="$GITHUB_WORKSPACE/dist"
           TARBALL="maitri-vicinae-extension.tar.gz"
+          # Workaround: vici build >= 0.29 stages into a mkdtemp dir (mode 0700) and
+          # renames it to dist/. The archive's ./ entry carries that mode onto the
+          # extract target, and makepkg extracts as fakeroot, so the packaged
+          # /usr/share/maitri/vicinae-extension would end up unreadable by users.
+          chmod 0755 "$EXT_DIR"
           tar -czf "$GITHUB_WORKSPACE/$TARBALL" -C "$EXT_DIR" .
           cd "$GITHUB_WORKSPACE"
           sha256sum "$TARBALL" > "$TARBALL.sha256"
