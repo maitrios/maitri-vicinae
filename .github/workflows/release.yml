@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build-and-release:
@@ -46,6 +48,11 @@ jobs:
           echo "Packaged:"
           ls -la "$TARBALL" "$TARBALL.sha256"
           cat "$TARBALL.sha256"
+
+      - name: Attest extension build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: maitri-vicinae-extension.tar.gz
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
