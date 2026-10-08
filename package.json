@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/vicinaehq/vicinae/refs/heads/main/extra/schemas/extension.json",
   "name": "maitri",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "title": "maitri",
   "description": "maitri desktop menu, keybindings and pickers for Vicinae",
   "categories": [
